@@ -20,10 +20,15 @@ declare global {
   const OPENCODE_TUI_PATH: string
 }
 
+// Import TUI binary for embedding (similar to tree-sitter pattern)
 if (typeof OPENCODE_TUI_PATH !== "undefined") {
-  await import(OPENCODE_TUI_PATH as string, {
-    with: { type: "file" },
-  })
+  try {
+    await import(OPENCODE_TUI_PATH as string, {
+      with: { type: "file" },
+    })
+  } catch (e) {
+    // File doesn't exist at build time, which is expected for --define approach
+  }
 }
 
 export const TuiCommand = cmd({
@@ -106,6 +111,7 @@ export const TuiCommand = cmd({
 
         let cmd = ["go", "run", "./main.go"]
         let cwd = Bun.fileURLToPath(new URL("../../../../tui/cmd/opencode", import.meta.url))
+        Log.Default.info("embeddedFiles", { count: Bun.embeddedFiles.length, files: Bun.embeddedFiles.map(f => (f as File).name) })
         const tui = Bun.embeddedFiles.find((item) => (item as File).name.includes("tui")) as File
         if (tui) {
           let binaryName = tui.name

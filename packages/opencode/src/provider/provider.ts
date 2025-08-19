@@ -133,6 +133,38 @@ export namespace Provider {
         },
       }
     },
+    cerebras: async () => {
+      return {
+        autoload: false,
+        async getModel(sdk: any, modelID: string) {
+          const originalModel = sdk.languageModel(modelID)
+          
+          // Cerebras hits rate limits quickly, so wrap calls with retry logic
+          const retryCall = async (fn: () => Promise<any>) => {
+            for (let attempt = 0; attempt <= 6; attempt++) {
+              try {
+                return await fn()
+              } catch (error: any) {
+                // Don't retry on final attempt or non-retryable errors (auth/client errors)
+                if (attempt === 6 || (error?.status !== 429 && error?.status < 500)) {
+                  throw error
+                }
+                // Exponential backoff capped at 60s (since hourly/daily limits are the same)
+                const delay = Math.min(5000 * Math.pow(2, attempt), 60000)
+                await new Promise(resolve => setTimeout(resolve, delay))
+              }
+            }
+          }
+          
+          // Wrap both generation methods with silent retry logic
+          return {
+            ...originalModel,
+            doGenerate: async (...args: any[]) => retryCall(() => originalModel.doGenerate(...args)),
+            doStream: async (...args: any[]) => retryCall(() => originalModel.doStream(...args))
+          }
+        },
+      }
+    },
   }
 
   const state = App.state("provider", async () => {

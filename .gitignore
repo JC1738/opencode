@@ -7,3 +7,7 @@ node_modules
 openapi.json
 playground
 tmp
+
+# Build artifacts
+dist/
+opencode-complete

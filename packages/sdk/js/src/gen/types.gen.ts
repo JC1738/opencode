@@ -552,6 +552,7 @@ export type App = {
   hostname: string
   git: boolean
   path: {
+    home: string
     config: string
     data: string
     root: string
@@ -585,6 +586,9 @@ export type Config = {
      */
     scroll_speed: number
   }
+  /**
+   * Command configuration, see https://opencode.ai/docs/commands
+   */
   command?: {
     [key: string]: {
       template: string
@@ -1133,6 +1137,13 @@ export type Symbol = {
     uri: string
     range: Range
   }
+}
+
+export type FileNode = {
+  name: string
+  path: string
+  type: "file" | "directory"
+  ignored: boolean
 }
 
 export type File = {
@@ -1801,13 +1812,31 @@ export type FindSymbolsResponses = {
 
 export type FindSymbolsResponse = FindSymbolsResponses[keyof FindSymbolsResponses]
 
-export type FileReadData = {
+export type FileListData = {
   body?: never
   path?: never
   query: {
     path: string
   }
   url: "/file"
+}
+
+export type FileListResponses = {
+  /**
+   * Files and directories
+   */
+  200: Array<FileNode>
+}
+
+export type FileListResponse = FileListResponses[keyof FileListResponses]
+
+export type FileReadData = {
+  body?: never
+  path?: never
+  query: {
+    path: string
+  }
+  url: "/file/content"
 }
 
 export type FileReadResponses = {

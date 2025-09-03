@@ -15,6 +15,7 @@ import { Ide } from "../../ide"
 
 import { Flag } from "../../flag/flag"
 import { Session } from "../../session"
+import { Instance } from "../../project/instance"
 
 declare global {
   const OPENCODE_TUI_PATH: string
@@ -84,7 +85,7 @@ export const TuiCommand = cmd({
         UI.error("Failed to change directory to " + cwd)
         return
       }
-      const result = await bootstrap({ cwd }, async (app) => {
+      const result = await bootstrap(cwd, async () => {
         const sessionID = await (async () => {
           if (args.continue) {
             const it = Session.list()
@@ -152,7 +153,7 @@ export const TuiCommand = cmd({
             ...process.env,
             CGO_ENABLED: "0",
             OPENCODE_SERVER: server.url.toString(),
-            OPENCODE_APP_INFO: JSON.stringify(app),
+            OPENCODE_PROJECT: JSON.stringify(Instance.project),
           },
           onExit: () => {
             server.stop()

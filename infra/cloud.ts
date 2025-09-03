@@ -5,15 +5,38 @@ import { domain } from "./stage"
 // DATABASE
 ////////////////
 
-const DATABASE_USERNAME = new sst.Secret("DATABASE_USERNAME")
-const DATABASE_PASSWORD = new sst.Secret("DATABASE_PASSWORD")
+const cluster = planetscale.getDatabaseOutput({
+  name: "opencode",
+  organization: "sst",
+})
+
+const branch =
+  $app.stage === "production"
+    ? planetscale.getBranchOutput({
+        name: "production",
+        organization: cluster.organization,
+        database: cluster.name,
+      })
+    : new planetscale.Branch("DatabaseBranch", {
+        database: cluster.name,
+        organization: cluster.organization,
+        name: $app.stage,
+        parentBranch: "production",
+      })
+const password = new planetscale.Password("DatabasePassword", {
+  name: $app.stage,
+  database: cluster.name,
+  organization: cluster.organization,
+  branch: branch.name,
+})
+
 export const database = new sst.Linkable("Database", {
   properties: {
-    host: `aws-us-east-2-${$app.stage === "thdxr" ? "2" : "1"}.pg.psdb.cloud`,
-    database: "postgres",
-    username: DATABASE_USERNAME.value,
-    password: DATABASE_PASSWORD.value,
-    port: 5432,
+    host: password.accessHostUrl,
+    database: cluster.name,
+    username: password.username,
+    password: password.plaintext,
+    port: 3306,
   },
 })
 
@@ -45,8 +68,8 @@ export const auth = new sst.cloudflare.Worker("AuthApi", {
 // GATEWAY
 ////////////////
 
-export const stripeWebhook = new WebhookEndpoint("StripeWebhook", {
-  url: $interpolate`https://console.${domain}/stripe/webhook`,
+export const stripeWebhook = new WebhookEndpoint("StripeWebhookEndpoint", {
+  url: $interpolate`https://${domain}/stripe/webhook`,
   enabledEvents: [
     "checkout.session.async_payment_failed",
     "checkout.session.async_payment_succeeded",
@@ -77,8 +100,8 @@ export const stripeWebhook = new WebhookEndpoint("StripeWebhook", {
 })
 
 const ANTHROPIC_API_KEY = new sst.Secret("ANTHROPIC_API_KEY")
-const OPENAI_API_KEY = new sst.Secret("OPENAI_API_KEY")
-const ZHIPU_API_KEY = new sst.Secret("ZHIPU_API_KEY")
+const XAI_API_KEY = new sst.Secret("XAI_API_KEY")
+const BASETEN_API_KEY = new sst.Secret("BASETEN_API_KEY")
 const STRIPE_SECRET_KEY = new sst.Secret("STRIPE_SECRET_KEY")
 const AUTH_API_URL = new sst.Linkable("AUTH_API_URL", {
   properties: { value: auth.url.apply((url) => url!) },
@@ -86,27 +109,13 @@ const AUTH_API_URL = new sst.Linkable("AUTH_API_URL", {
 const STRIPE_WEBHOOK_SECRET = new sst.Linkable("STRIPE_WEBHOOK_SECRET", {
   properties: { value: stripeWebhook.secret },
 })
-export const gateway = new sst.cloudflare.Worker("GatewayApi", {
-  domain: `api.gateway.${domain}`,
-  handler: "cloud/function/src/gateway.ts",
-  url: true,
-  link: [
-    database,
-    AUTH_API_URL,
-    STRIPE_WEBHOOK_SECRET,
-    STRIPE_SECRET_KEY,
-    ANTHROPIC_API_KEY,
-    OPENAI_API_KEY,
-    ZHIPU_API_KEY,
-  ],
-})
 
 ////////////////
 // CONSOLE
 ////////////////
 
-export const console = new sst.cloudflare.x.SolidStart("Console", {
-  domain: `console.${domain}`,
+new sst.cloudflare.x.SolidStart("Console", {
+  domain,
   path: "cloud/app",
   link: [
     database,
@@ -114,12 +123,23 @@ export const console = new sst.cloudflare.x.SolidStart("Console", {
     STRIPE_WEBHOOK_SECRET,
     STRIPE_SECRET_KEY,
     ANTHROPIC_API_KEY,
-    OPENAI_API_KEY,
-    ZHIPU_API_KEY,
+    XAI_API_KEY,
+    BASETEN_API_KEY,
   ],
   environment: {
     //VITE_DOCS_URL: web.url.apply((url) => url!),
     //VITE_API_URL: gateway.url.apply((url) => url!),
     VITE_AUTH_URL: auth.url.apply((url) => url!),
+  },
+  transform: {
+    server: {
+      transform: {
+        worker: {
+          placement: {
+            mode: "smart",
+          },
+        },
+      },
+    },
   },
 })

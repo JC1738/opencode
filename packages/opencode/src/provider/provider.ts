@@ -1,5 +1,4 @@
 import z from "zod"
-import { App } from "../app/app"
 import { Config } from "../config/config"
 import { mergeDeep, sortBy } from "remeda"
 import { NoSuchModelError, type LanguageModel, type Provider as SDK } from "ai"
@@ -9,6 +8,7 @@ import { Plugin } from "../plugin"
 import { ModelsDev } from "./models"
 import { NamedError } from "../util/error"
 import { Auth } from "../auth"
+import { Instance } from "../project/instance"
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
@@ -173,7 +173,7 @@ export namespace Provider {
     },
   }
 
-  const state = App.state("provider", async () => {
+  const state = Instance.state(async () => {
     const config = await Config.get()
     const database = await ModelsDev.get()
 
@@ -185,7 +185,10 @@ export namespace Provider {
         options: Record<string, any>
       }
     } = {}
-    const models = new Map<string, { info: ModelsDev.Model; language: LanguageModel }>()
+    const models = new Map<
+      string,
+      { providerID: string; modelID: string; info: ModelsDev.Model; language: LanguageModel }
+    >()
     const sdk = new Map<string, SDK>()
 
     log.info("init")
@@ -352,9 +355,16 @@ export namespace Provider {
       const pkg = provider.npm ?? provider.id
       const mod = await import(await BunProc.install(pkg, "latest"))
       const fn = mod[Object.keys(mod).find((key) => key.startsWith("create"))!]
+      let options = { ...s.providers[provider.id]?.options }
+      if (options["timeout"] !== undefined) {
+        // Only override fetch if user explicitly sets timeout
+        options["fetch"] = async (input: any, init?: any) => {
+          return await fetch(input, { ...init, timeout: options["timeout"] })
+        }
+      }
       const loaded = fn({
         name: provider.id,
-        ...s.providers[provider.id]?.options,
+        ...options,
       })
       s.sdk.set(provider.id, loaded)
       return loaded as SDK
@@ -387,10 +397,14 @@ export namespace Provider {
       const language = provider.getModel ? await provider.getModel(sdk, modelID) : sdk.languageModel(modelID)
       log.info("found", { providerID, modelID })
       s.models.set(key, {
+        providerID,
+        modelID,
         info,
         language,
       })
       return {
+        modelID,
+        providerID,
         info,
         language,
       }
